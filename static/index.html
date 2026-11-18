@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Куда поехать?</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f4f6fb;
+    }
+
+    .layout {
+      display: flex;
+      height: 100vh;
+    }
+
+    .panel {
+      width: 340px;
+      padding: 24px;
+      background: #ffffff;
+      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.08);
+      overflow-y: auto;
+    }
+
+    h1 {
+      font-size: 22px;
+      margin: 0 0 20px;
+      color: #1f2937;
+    }
+
+    label {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 14px;
+      color: #374151;
+    }
+
+    input,
+    select {
+      width: 100%;
+      padding: 10px;
+      margin-bottom: 16px;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+
+    button {
+      width: 100%;
+      padding: 12px;
+      background: #2f6fed;
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-size: 15px;
+      cursor: pointer;
+    }
+
+    button:hover {
+      background: #2559c7;
+    }
+
+    .result {
+      display: none;
+      margin-top: 20px;
+      padding: 14px;
+      background: #eef4ff;
+      border: 1px solid #c7d8ff;
+      border-radius: 10px;
+      font-size: 14px;
+      color: #1f2937;
+    }
+
+    .result b {
+      font-size: 16px;
+    }
+
+    #map {
+      flex: 1;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="layout">
+    <div class="panel">
+      <h1>Куда поехать?</h1>
+
+      <label for="location">Откуда вы?</label>
+      <input
+        id="location"
+        type="text"
+        placeholder="Например: Санкт-Петербург"
+      >
+
+      <label for="radius">Радиус поездки, км</label>
+      <input
+        id="radius"
+        type="number"
+        min="1"
+        max="500"
+        value="20"
+      >
+
+      <label for="category">Категория места</label>
+      <select id="category">
+        <option value="Кафе">Кафе</option>
+        <option value="Ресторан">Ресторан</option>
+        <option value="Парк">Парк</option>
+        <option value="Музей">Музей</option>
+        <option value="Бар">Бар</option>
+        <option value="Кино">Кино</option>
+      </select>
+
+      <button type="button" onclick="findPlace()">
+        Найти место
+      </button>
+
+      <div id="result" class="result"></div>
+    </div>
+
+    <div id="map"></div>
+  </div>
+
+  <script>
+    const map = L.map('map').setView([59.9386, 30.3141], 11);
+
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    let marker = null;
+    let circle = null;
+
+    async function findPlace() {
+      const location = document.getElementById('location').value.trim();
+      const radius = Number(document.getElementById('radius').value);
+      const category = document.getElementById('category').value;
+
+      if (!location) {
+        alert('Пожалуйста, укажите место, откуда вы поедете.');
+        return;
+      }
+
+      if (!radius || radius < 1) {
+        alert('Пожалуйста, укажите радиус поездки.');
+        return;
+      }
+
+      const resultBlock = document.getElementById('result');
+      resultBlock.style.display = 'block';
+      resultBlock.innerHTML = 'Ищем подходящее место...';
+
+      try {
+        const response = await fetch('/api/trips/random', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            location: location,
+            radius_km: radius,
+            category: category
+          })
+        });
+
+        if (!response.ok) {
+          const error = await response.json().catch(() => ({}));
+          resultBlock.innerHTML = error.detail || 'Не удалось найти место.';
+          return;
+        }
+
+        const place = await response.json();
+
+        resultBlock.innerHTML = `
+          <b>${place.name}</b><br><br>
+          Категория: ${place.category}<br>
+          Адрес: ${place.address || 'не указан'}<br>
+          Расстояние: ${Number(place.distance_km).toFixed(1)} км
+        `;
+
+        if (marker) {
+          map.removeLayer(marker);
+        }
+
+        if (circle) {
+          map.removeLayer(circle);
+        }
+
+        marker = L.marker([place.lat, place.lon]).addTo(map);
+
+        circle = L.circle([place.lat, place.lon], {
+          radius: radius * 1000,
+          color: '#2f6fed',
+          weight: 2,
+          fillColor: '#2f6fed',
+          fillOpacity: 0.08
+        }).addTo(map);
+
+        map.setView([place.lat, place.lon], 13);
+
+      } catch (error) {
+        resultBlock.innerHTML = 'Произошла ошибка при поиске места.';
+      }
+    }
+  </script>
+</body>
+</html>
